@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 	"unsafe"
 )
@@ -21,24 +23,32 @@ type writer struct {
 	url   string
 }
 
-var defalutClient *http.Client
+var (
+	defalutClient *http.Client
+	bufferPool    sync.Pool
+)
+
+type Body struct {
+	Content   string `json:"content,omitempty"`
+	Timestamp string `json:"timestamp,omitempty"`
+}
 
 func init() {
-	defalutClient = &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			MaxIdleConns:        10000,
-			MaxIdleConnsPerHost: 10000,
-			IdleConnTimeout:     600 * time.Second,
-			Dial: func(netw, addr string) (net.Conn, error) {
-				return net.DialTimeout(netw, addr, time.Second*5)
-			},
-
-			ResponseHeaderTimeout: 5 * time.Second,
-		},
-	}
-
 	if addr := os.Getenv("ES_ADDR"); addr != "" {
+		defalutClient = &http.Client{
+			Timeout: 5 * time.Second,
+			Transport: &http.Transport{
+				MaxIdleConns:        10000,
+				MaxIdleConnsPerHost: 10000,
+				IdleConnTimeout:     600 * time.Second,
+				Dial: func(netw, addr string) (net.Conn, error) {
+					return net.DialTimeout(netw, addr, time.Second*5)
+				},
+
+				ResponseHeaderTimeout: 5 * time.Second,
+			},
+		}
+
 		hostname, _ := os.Hostname()
 		w := &writer{
 			index: "quic-log",
@@ -48,12 +58,11 @@ func init() {
 		}
 
 		log.SetOutput(w)
-	}
-}
 
-type Body struct {
-	Content   string `json:"content,omitempty"`
-	Timestamp string `json:"timestamp,omitempty"`
+		bufferPool.New = func() interface{} {
+			return &Body{}
+		}
+	}
 }
 
 func (w *writer) Write(p []byte) (n int, err error) {
@@ -61,12 +70,16 @@ func (w *writer) Write(p []byte) (n int, err error) {
 		return 0, errors.New("nil")
 	}
 
-	body := &Body{
-		Content:   bytes2str(p[27:]),
-		Timestamp: bytes2str(p[:19]),
+	if defalutClient == nil || len(p) < 28 {
+		fmt.Println(bytes2str(p))
+		return len(p), err
 	}
 
+	body := bufferPool.Get().(*Body)
+	body.Content = bytes2str(p[27:])
+	body.Timestamp = bytes2str(p[:19])
 	b, _ := json.Marshal(body)
+	bufferPool.Put(body)
 
 	resp, err := defalutClient.Post(w.url, "application/json", bytes.NewReader(b))
 	if err != nil {
