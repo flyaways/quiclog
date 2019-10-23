@@ -17,10 +17,7 @@ import (
 )
 
 type writer struct {
-	addr  string
-	index string
-	typ   string
-	url   string
+	url string
 }
 
 var (
@@ -30,6 +27,7 @@ var (
 
 type Body struct {
 	Content   string `json:"content,omitempty"`
+	Rule      string `json:"role,omitempty"`
 	Timestamp string `json:"timestamp,omitempty"`
 }
 
@@ -51,10 +49,7 @@ func init() {
 
 		hostname, _ := os.Hostname()
 		w := &writer{
-			index: "quic-log",
-			typ:   hostname,
-			addr:  addr,
-			url:   addr + "/quic-log/" + hostname + "/",
+			url: addr + "/quic-log/" + hostname + "/",
 		}
 
 		log.SetOutput(w)
@@ -76,8 +71,9 @@ func (w *writer) Write(p []byte) (n int, err error) {
 	}
 
 	body := bufferPool.Get().(*Body)
-	body.Content = bytes2str(p[27:])
 	body.Timestamp = bytes2str(p[:19])
+	body.Rule = bytes2str(p[20:26])
+	body.Content = bytes2str(p[27:])
 	b, _ := json.Marshal(body)
 	bufferPool.Put(body)
 

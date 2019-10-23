@@ -4,10 +4,7 @@ import "testing"
 
 func Test_writer_Write(t *testing.T) {
 	type fields struct {
-		addr  string
-		index string
-		typ   string
-		url   string
+		url string
 	}
 	type args struct {
 		p []byte
@@ -24,10 +21,7 @@ func Test_writer_Write(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := &writer{
-				addr:  tt.fields.addr,
-				index: tt.fields.index,
-				typ:   tt.fields.typ,
-				url:   tt.fields.url,
+				url: tt.fields.url,
 			}
 			gotN, err := w.Write(tt.args.p)
 			if (err != nil) != tt.wantErr {
